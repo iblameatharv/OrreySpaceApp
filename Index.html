@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orrey Space App -(Test Build)</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body, html {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      display: flex;
+      gap: 10px;
+    }
+
+    button {
+      background-color: #282c34;
+      color: white;
+      border: 1px solid white;
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #3b3f47;
+    }
+
+    .label {
+      position: absolute;
+      color: white;
+      background-color: rgba(0, 0, 0, 0.7);
+      padding: 2px 5px;
+      font-family: Arial, sans-serif;
+      font-size: 12px;
+      border-radius: 3px;
+    }
+  </style>
+  <!-- THREE.js pls Come, -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+<div id="ui">
+  <button id="startButton">Start Simulation</button>
+  <button id="stopButton">Stop Simulation</button>
+  <button id="resetButton">Reset View</button>
+  <button id="toggleLabelsButton">Toggle Labels</button>
+</div>
+<canvas id="solarSystemCanvas"></canvas>
+
+<script>
+  // Hmm.. initializing the universe
+  let scene, camera, renderer, controls;
+  let sun, mercury, venus, earth, mars, jupiter, saturn, uranus, neptune;
+  let planetLabelsVisible = true;
+  let planets = [];
+  let labels = [];
+  let orbits = [];
+  let moons = [];
+  let rings = [];
+  let animationId;
+  let labelElements = [];
+
+  init();
+  animate();
+
+  function init() {
+    // Create Scene
+    scene = new THREE.Scene(); // Where the magic happens (and the occasional space monster)
+    scene.background = new THREE.Color(0x000000); // Black background
+
+    // Camera
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000); // Just trying to avoid cosmic vertigo
+    camera.position.set(0, 500, 1000);
+
+    // Renderer
+    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('solarSystemCanvas') });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // Orbit Controls for camera
+    controls = new THREE.OrbitControls(camera, renderer.domElement); // Because sometimes you just want to look around without doing the moonwalk
+
+    // Create Celestial Bodies
+    createSun();
+    createPlanet('Mercury', 10, 100, 0.9);
+    createPlanet('Venus', 15, 150, 0.7);
+    createPlanet('Earth', 20, 200, 0.6, [{ name: 'Moon', size: 5, distance: 30 }]);
+    createPlanet('Mars', 15, 250, 0.5, [{ name: 'Phobos', size: 4, distance: 20 }, { name: 'Deimos', size: 3, distance: 25 }]);
+    createPlanet('Jupiter', 30, 350, 0.3, [{ name: 'Io', size: 6, distance: 35 }, { name: 'Europa', size: 6, distance: 40 }], true);
+    createPlanet('Saturn', 28, 450, 0.25, [{ name: 'Titan', size: 6, distance: 40 }], true);
+    createPlanet('Uranus', 24, 550, 0.2, [], true);
+    createPlanet('Neptune', 22, 650, 0.15, [{ name: 'Triton', size: 5, distance: 35 }]);
+
+    // Lighting - i can improve this but i won't i am lazy
+    const light = new THREE.PointLight(0xffffff, 2, 2000);
+    light.position.set(0, 0, 0);
+    scene.add(light);
+
+    // Event Listeners
+    window.addEventListener('resize', onWindowResize);
+    document.getElementById('startButton').addEventListener('click', startSimulation); // Press here to activate the cosmic chaos!
+    document.getElementById('stopButton').addEventListener('click', stopSimulation);
+    document.getElementById('resetButton').addEventListener('click', resetView);
+    document.getElementById('toggleLabelsButton').addEventListener('click', toggleLabels);
+
+    createLabels(); // Initialize labels
+  }
+
+  // Create the Sun
+  function createSun() {
+    const geometry = new THREE.SphereGeometry(50, 32, 32);
+    const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+    sun = new THREE.Mesh(geometry, material);
+    scene.add(sun); // The big ball of gas that keeps us warm (and slightly anxious about space weather)
+  }
+
+  // Create Planets and add moons and rings
+  function createPlanet(name, size, distance, speedFactor, moonData = [], hasRings = false) {
+    const geometry = new THREE.SphereGeometry(size, 32, 32);
+    const material = new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff });
+    const planet = new THREE.Mesh(geometry, material);
+
+    planet.position.x = distance;
+    planet.userData = { name, distance, speedFactor, angle: 0 };
+
+    planets.push(planet);
+    scene.add(planet);
+
+    // Add orbit ring for visual - This Sucks but it Works
+    const orbitGeometry = new THREE.RingGeometry(distance - 0.5, distance + 0.5, 64); // Looks like a cosmic hula hoop—stay fit while orbiting!
+    const orbitMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    const orbit = new THREE.Mesh(orbitGeometry, orbitMaterial);
+    orbit.rotation.x = Math.PI / 2;
+    orbits.push(orbit);
+    scene.add(orbit);
+
+    // Add moons
+    moonData.forEach(moon => {
+      const moonGeometry = new THREE.SphereGeometry(moon.size, 32, 32);
+      const moonMaterial = new THREE.MeshBasicMaterial({ color: Math.random() * 0xffffff });
+      const moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
+
+      moonMesh.position.x = planet.position.x + moon.distance;
+      moonMesh.userData = { name: moon.name, distance: moon.distance, planet, speedFactor: planet.userData.speedFactor * 1.5, angle: 0 };
+
+      moons.push(moonMesh);
+      scene.add(moonMesh);
+    });
+
+    // Add rings if applicable
+    if (hasRings) {
+      const ringGeometry = new THREE.RingGeometry(size + 10, size + 20, 64);
+      const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+      const ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
+
+      ringMesh.rotation.x = Math.PI / 2;
+      planet.add(ringMesh); // For when your planet wants to show off its bling
+    }
+  }
+
+  // Resize window handler
+  function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+
+  // Animation and Rendering Loop
+  function animate() {
+    animationId = requestAnimationFrame(animate);
+    updatePlanetsAndMoons();
+    updateLabels();
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  // Update planet positions for orbit simulation
+  function updatePlanetsAndMoons() {
+    planets.forEach(planet => {
+      planet.userData.angle += planet.userData.speedFactor * 0.01;
+      planet.position.x = planet.userData.distance * Math.cos(planet.userData.angle);
+      planet.position.z = planet.userData.distance * Math.sin(planet.userData.angle);
+    });
+
+    moons.forEach(moon => {
+      const planet = moon.userData.planet;
+      moon.userData.angle += moon.userData.speedFactor * 0.01;
+      moon.position.x = planet.position.x + moon.userData.distance * Math.cos(moon.userData.angle);
+      moon.position.z = planet.position.z + moon.userData.distance * Math.sin(moon.userData.angle);
+    });
+  }
+
+  // Start Simulation
+  function startSimulation() {
+    if (!animationId) animate(); // Hit that button to unleash the space fury!
+  }
+
+  // Stop Simulation
+  function stopSimulation() {
+    cancelAnimationFrame(animationId);
+    animationId = null;
+  }
+
+  // Reset View
+  function resetView() {
+    camera.position.set(0, 500, 1000);
+    controls.reset(); // Press here to return to a safe space
+  }
+
+  // Toggle Planet Labels
+  function toggleLabels() {
+    planetLabelsVisible = !planetLabelsVisible;
+    labelElements.forEach(label => {
+      label.style.display = planetLabelsVisible ? 'block' : 'none'; // Because sometimes you just need to know who’s who in the cosmic neighborhood
+    });
+  }
+
+  // Create labels for each planet and moon
+  function createLabels() {
+    planets.forEach(planet => {
+      const label = document.createElement('div');
+      label.classList.add('label');
+      label.textContent = planet.userData.name;
+      document.body.appendChild(label);
+      labelElements.push(label); // Slapping labels on cosmic bodies like they’re at a space convention
+    });
+
+    moons.forEach(moon => {
+      const label = document.createElement('div');
+      label.classList.add('label');
+      label.textContent = moon.userData.name;
+      document.body.appendChild(label);
+      labelElements.push(label);
+    });
+  }
+
+  // Update label positions
+  function updateLabels() {
+    let allBodies = [...planets, ...moons];
+    allBodies.forEach((body, index) => {
+      const label = labelElements[index];
+      const vector = body.position.clone().project(camera);
+      const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+      const y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
+      label.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`; // Make sure labels float around like they're trying to find a good Wi-Fi signal
+    });
+  }
+</script>
+</body>
+</html>
