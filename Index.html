@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Orrey Space App -(Test Build)</title>
+  <title>Interactive Orrery Space App</title>
   <style>
     * {
       margin: 0;
@@ -51,9 +51,18 @@
       font-family: Arial, sans-serif;
       font-size: 12px;
       border-radius: 3px;
+      pointer-events: none; /* Prevent accidental clicks on labels */
+      z-index: 1000;
+    }
+
+    /* Responsive button styles for smaller screens */
+    @media (max-width: 768px) {
+      button {
+        padding: 8px;
+        font-size: 12px;
+      }
     }
   </style>
-  <!-- THREE.js pls Come, -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
 </head>
@@ -67,7 +76,6 @@
 <canvas id="solarSystemCanvas"></canvas>
 
 <script>
-  // Hmm.. initializing the universe
   let scene, camera, renderer, controls;
   let sun, mercury, venus, earth, mars, jupiter, saturn, uranus, neptune;
   let planetLabelsVisible = true;
@@ -84,11 +92,11 @@
 
   function init() {
     // Create Scene
-    scene = new THREE.Scene(); // Where the magic happens (and the occasional space monster)
+    scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000); // Black background
 
     // Camera
-    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000); // Just trying to avoid cosmic vertigo
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
     camera.position.set(0, 500, 1000);
 
     // Renderer
@@ -96,7 +104,8 @@
     renderer.setSize(window.innerWidth, window.innerHeight);
 
     // Orbit Controls for camera
-    controls = new THREE.OrbitControls(camera, renderer.domElement); // Because sometimes you just want to look around without doing the moonwalk
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableZoom = true;
 
     // Create Celestial Bodies
     createSun();
@@ -109,19 +118,57 @@
     createPlanet('Uranus', 24, 550, 0.2, [], true);
     createPlanet('Neptune', 22, 650, 0.15, [{ name: 'Triton', size: 5, distance: 35 }]);
 
-    // Lighting - i can improve this but i won't i am lazy
+    // Add stars to the background
+    addStars();
+
+    // Lights
     const light = new THREE.PointLight(0xffffff, 2, 2000);
     light.position.set(0, 0, 0);
     scene.add(light);
 
     // Event Listeners
     window.addEventListener('resize', onWindowResize);
-    document.getElementById('startButton').addEventListener('click', startSimulation); // Press here to activate the cosmic chaos!
+    document.getElementById('startButton').addEventListener('click', startSimulation);
     document.getElementById('stopButton').addEventListener('click', stopSimulation);
     document.getElementById('resetButton').addEventListener('click', resetView);
     document.getElementById('toggleLabelsButton').addEventListener('click', toggleLabels);
 
+    // Listen for clicks on planets to focus camera
+    window.addEventListener('click', (event) => {
+      const mouse = new THREE.Vector2();
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(planets);
+
+      if (intersects.length > 0) {
+        focusOnPlanet(intersects[0].object);
+      }
+    });
+
     createLabels(); // Initialize labels
+  }
+
+  // Add stars in the background
+  function addStars() {
+    const starGeometry = new THREE.BufferGeometry();
+    const starMaterial = new THREE.PointsMaterial({ color: 0x888888 });
+
+    const starVertices = [];
+    for (let i = 0; i < 10000; i++) {
+      const x = THREE.MathUtils.randFloatSpread(2000);
+      const y = THREE.MathUtils.randFloatSpread(2000);
+      const z = THREE.MathUtils.randFloatSpread(2000);
+      starVertices.push(x, y, z);
+    }
+
+    starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
   }
 
   // Create the Sun
@@ -129,7 +176,7 @@
     const geometry = new THREE.SphereGeometry(50, 32, 32);
     const material = new THREE.MeshBasicMaterial({ color: 0xffff00 });
     sun = new THREE.Mesh(geometry, material);
-    scene.add(sun); // The big ball of gas that keeps us warm (and slightly anxious about space weather)
+    scene.add(sun);
   }
 
   // Create Planets and add moons and rings
@@ -144,8 +191,8 @@
     planets.push(planet);
     scene.add(planet);
 
-    // Add orbit ring for visual - This Sucks but it Works
-    const orbitGeometry = new THREE.RingGeometry(distance - 0.5, distance + 0.5, 64); // Looks like a cosmic hula hoop—stay fit while orbiting!
+    // Add orbit ring for visual
+    const orbitGeometry = new THREE.RingGeometry(distance - 0.5, distance + 0.5, 64);
     const orbitMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
     const orbit = new THREE.Mesh(orbitGeometry, orbitMaterial);
     orbit.rotation.x = Math.PI / 2;
@@ -172,28 +219,60 @@
       const ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
 
       ringMesh.rotation.x = Math.PI / 2;
-      planet.add(ringMesh); // For when your planet wants to show off its bling
+      planet.add(ringMesh); // Attach the ring to the planet
     }
   }
 
-  // Resize window handler
+  // Focus camera on a clicked planet
+  function focusOnPlanet(planet) {
+    controls.target.copy(planet.position);
+    camera.position.set(planet.position.x + 100, planet.position.y + 100, planet.position.z + 100);
+  }
+
+  function createLabels() {
+    planets.forEach(planet => {
+      const label = document.createElement('div');
+      label.className = 'label';
+      label.innerHTML = planet.userData.name;
+      document.body.appendChild(label);
+      labelElements.push(label);
+    });
+  }
+
+  // Handle window resize
   function onWindowResize() {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
-  // Animation and Rendering Loop
-  function animate() {
-    animationId = requestAnimationFrame(animate);
-    updatePlanetsAndMoons();
-    updateLabels();
-    controls.update();
-    renderer.render(scene, camera);
+  // Start animation
+  function startSimulation() {
+    animate();
   }
 
-  // Update planet positions for orbit simulation
-  function updatePlanetsAndMoons() {
+  // Stop animation
+  function stopSimulation() {
+    cancelAnimationFrame(animationId);
+  }
+
+  // Reset camera view
+  function resetView() {
+    controls.reset();
+  }
+
+  // Toggle labels
+  function toggleLabels() {
+    planetLabelsVisible = !planetLabelsVisible;
+    labelElements.forEach(label => {
+      label.style.display = planetLabelsVisible ? 'block' : 'none';
+    });
+  }
+
+  // Animation loop
+  function animate() {
+    animationId = requestAnimationFrame(animate);
+
     planets.forEach(planet => {
       planet.userData.angle += planet.userData.speedFactor * 0.01;
       planet.position.x = planet.userData.distance * Math.cos(planet.userData.angle);
@@ -201,66 +280,23 @@
     });
 
     moons.forEach(moon => {
-      const planet = moon.userData.planet;
       moon.userData.angle += moon.userData.speedFactor * 0.01;
-      moon.position.x = planet.position.x + moon.userData.distance * Math.cos(moon.userData.angle);
-      moon.position.z = planet.position.z + moon.userData.distance * Math.sin(moon.userData.angle);
-    });
-  }
-
-  // Start Simulation
-  function startSimulation() {
-    if (!animationId) animate(); // Hit that button to unleash the space fury!
-  }
-
-  // Stop Simulation
-  function stopSimulation() {
-    cancelAnimationFrame(animationId);
-    animationId = null;
-  }
-
-  // Reset View
-  function resetView() {
-    camera.position.set(0, 500, 1000);
-    controls.reset(); // Press here to return to a safe space
-  }
-
-  // Toggle Planet Labels
-  function toggleLabels() {
-    planetLabelsVisible = !planetLabelsVisible;
-    labelElements.forEach(label => {
-      label.style.display = planetLabelsVisible ? 'block' : 'none'; // Because sometimes you just need to know who’s who in the cosmic neighborhood
-    });
-  }
-
-  // Create labels for each planet and moon
-  function createLabels() {
-    planets.forEach(planet => {
-      const label = document.createElement('div');
-      label.classList.add('label');
-      label.textContent = planet.userData.name;
-      document.body.appendChild(label);
-      labelElements.push(label); // Slapping labels on cosmic bodies like they’re at a space convention
+      moon.position.x = moon.userData.planet.position.x + moon.userData.distance * Math.cos(moon.userData.angle);
+      moon.position.z = moon.userData.planet.position.z + moon.userData.distance * Math.sin(moon.userData.angle);
     });
 
-    moons.forEach(moon => {
-      const label = document.createElement('div');
-      label.classList.add('label');
-      label.textContent = moon.userData.name;
-      document.body.appendChild(label);
-      labelElements.push(label);
-    });
+    updateLabels();
+
+    controls.update();
+    renderer.render(scene, camera);
   }
 
-  // Update label positions
   function updateLabels() {
-    let allBodies = [...planets, ...moons];
-    allBodies.forEach((body, index) => {
-      const label = labelElements[index];
-      const vector = body.position.clone().project(camera);
+    planets.forEach((planet, index) => {
+      const vector = planet.position.clone().project(camera);
       const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-      const y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
-      label.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`; // Make sure labels float around like they're trying to find a good Wi-Fi signal
+      const y = (vector.y * -0.5 + 0.5) * window.innerHeight;
+      labelElements[index].style.transform = `translate(-50%, -50%) translate(${x}px,${y}px)`;
     });
   }
 </script>
